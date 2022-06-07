@@ -3,8 +3,8 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use cw_token_sale_smart_contract::msg::{ HandleMsg, InitMsg, QueryMsg};
-use cw_token_sale_smart_contract::state::State;
+use secret_mint_contract::msg::{ HandleMsg, InitMsg, QueryMsg};
+use secret_mint_contract::state::State;
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

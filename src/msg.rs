@@ -37,7 +37,8 @@ pub enum HandleMsg {
     AddWhiteUser{member:HumanAddr},
     SetNftAddress{nft_address:HumanAddr},
     SetTokenAddres{token_address:HumanAddr,token_contract_hash:String},
-    AddMetaData {metadata: Vec<MetadataMsg>}
+    AddMetaData {metadata: Vec<MetadataMsg>},
+    SetMetaData {metadata: Vec<MetadataMsg>}
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

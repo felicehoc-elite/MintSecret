@@ -64,7 +64,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::AddWhiteUser { member } => add_white_user(deps,env,member),
         HandleMsg::SetNftAddress { nft_address } => set_nft_address(deps,env,nft_address),
         HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash),
-        HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata)
+        HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata),
+        HandleMsg::SetMetaData { metadata }=> set_metadata(deps,env,metadata)
     }
 }
 
@@ -535,6 +536,24 @@ pub fn add_metadata<S: Storage, A: Api, Q: Querier>(
     }
 
     save_metadata(&mut deps.storage).save(&metadata)?;
+   
+    Ok(HandleResponse::default())
+}
+
+
+pub fn set_metadata<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    new_metadata:Vec<MetadataMsg>
+) -> StdResult<HandleResponse> {
+    let state = config_read(&deps.storage).load()?;
+    if _env.message.sender != state.admin{
+        return Err(StdError::generic_err(
+            "Unauthorized"
+        ))
+    }
+   
+    save_metadata(&mut deps.storage).save(&new_metadata)?;
    
     Ok(HandleResponse::default())
 }
