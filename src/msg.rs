@@ -15,7 +15,7 @@ pub struct InitMsg {
    pub reward_wallet:Vec<Wallet>,
    pub presale_period:u64,
    pub presale_start:u64,
-   pub denom : String,
+   pub nft_contract_hash : String,
    pub token_address:HumanAddr,
    pub token_contract_hash:String,
    pub check_minted : Vec<bool>
@@ -36,7 +36,8 @@ pub enum HandleMsg {
     SetWhiteUsers{members:Vec<HumanAddr>},
     AddWhiteUser{member:HumanAddr},
     SetNftAddress{nft_address:HumanAddr},
-    SetTokenAddres{token_address:HumanAddr,token_contract_hash:String}
+    SetTokenAddres{token_address:HumanAddr,token_contract_hash:String},
+    AddMetaData {metadata: Vec<MetadataMsg>}
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -49,11 +50,7 @@ pub enum QueryMsg {
    
 }
 
-// We define a custom struct for each query response
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct CountResponse {
-    pub count: i32,
-}
+
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Wallet {
@@ -74,10 +71,6 @@ pub struct MetadataMsg {
    
     /// url to the image
     pub image: Option<String>,  
-    /// a select list of trait_types that are in the private metadata.  This will only ever be used
-    /// in public metadata
-    pub protected_attributes: Option<Vec<String>>,
-    pub code_hash: Option<String>,
-    pub number:Option<i32>
+  
 }
 

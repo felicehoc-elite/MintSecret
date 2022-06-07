@@ -1,14 +1,16 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::msg::Wallet;
+use crate::msg::{Wallet, MetadataMsg};
 
-use cosmwasm_std::{CanonicalAddr, Storage, Uint128, HumanAddr,StdResult};
+use cosmwasm_std::{Storage, Uint128, HumanAddr,StdResult};
 use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton,bucket,bucket_read};
 // use cw_storage_plus::Map;
 
 pub static CONFIG_KEY: &[u8] = b"config";
+pub static CONFIG_METADATA : &[u8] = b"config_metadata";
 pub static CONFIG_MEMBERS: &[u8] = b"config_members";
 pub const CONFIG_USERS: &[u8] = b"User";
+
 // pub const USERS: Map<&str, Vec<String>> = Map::new("User");
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -24,7 +26,7 @@ pub struct State {
     pub presale_start : u64,
     pub can_mint:bool,
     pub nft_address:HumanAddr,
-    pub denom:String,
+    pub nft_contract_hash:String,
     pub token_address:HumanAddr,
     pub token_contract_hash:String,
     pub check_minted : Vec<bool>
@@ -37,6 +39,15 @@ pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
 pub fn config_read<S: Storage>(storage: &S) -> ReadonlySingleton<S, State> {
     singleton_read(storage, CONFIG_KEY)
 }
+
+pub fn save_metadata<S: Storage>(storage: &mut S) -> Singleton<S, Vec<MetadataMsg>> {
+    singleton(storage, CONFIG_METADATA)
+}
+
+pub fn read_metadata<S: Storage>(storage: &S) -> ReadonlySingleton<S, Vec<MetadataMsg>> {
+    singleton_read(storage, CONFIG_METADATA)
+}
+
 
 pub fn store_members<S: Storage>(storage: &mut S) -> Singleton<S, Vec<HumanAddr>> {
     singleton(storage, CONFIG_MEMBERS)

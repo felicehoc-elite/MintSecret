@@ -1,20 +1,23 @@
-use std::env;
 
 use cosmwasm_std::{
     to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier,
-    StdError, StdResult, Storage, Uint128, HumanAddr,Decimal, from_binary
+    StdError, StdResult, Storage, Uint128, HumanAddr,Decimal
 };
 use secret_toolkit::snip721::{Metadata, Extension,Trait};
 
 
 use crate::msg::{ HandleMsg, InitMsg, QueryMsg,Wallet, MetadataMsg};
-use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info};
+use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info, save_metadata, read_metadata};
 use secret_toolkit::{snip20,snip721};
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
+use rand::{Rng};
+
+
+
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
+    _env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let state = State {
@@ -29,7 +32,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         presale_period : msg.presale_period,
         can_mint : true,
         nft_address:HumanAddr::from("nft_address"),
-        denom : msg.denom,
+        nft_contract_hash : msg.nft_contract_hash,
         token_address:msg.token_address,
         token_contract_hash:msg.token_contract_hash,
         check_minted : msg.check_minted
@@ -37,6 +40,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     config(&mut deps.storage).save(&state)?;
     store_members(&mut deps.storage).save(&msg.white_members)?;
+    let init_metadata:Vec<MetadataMsg> = vec![];
+    save_metadata(&mut deps.storage).save(&init_metadata)?;
 
     Ok(InitResponse::default())
 }
@@ -58,7 +63,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::SetWhiteUsers { members } => set_white_members(deps,env,members),
         HandleMsg::AddWhiteUser { member } => add_white_user(deps,env,member),
         HandleMsg::SetNftAddress { nft_address } => set_nft_address(deps,env,nft_address),
-        HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash)
+        HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash),
+        HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata)
     }
 }
 
@@ -66,11 +72,11 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     sender:HumanAddr,
-    from:HumanAddr,
+    _from:HumanAddr,
     amount:Uint128,
-    msg:Binary
+    _msg:Binary
 ) -> StdResult<HandleResponse> {
-    let metadata :MetadataMsg = from_binary(&msg)?;
+    
     let state = config_read(&deps.storage).load()?;
     let crr_time =  env.block.time;
     if crr_time < state.presale_start{
@@ -97,13 +103,21 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         ))
     }
 
-
-
+    let total = Uint128::u128(&state.total_supply);
+    let mut check = state.check_minted;
+    let mut rand_num = rand::thread_rng().gen_range(0, total);
+    while check[rand_num as usize]== false{
+        rand_num = (rand_num+1)%total;
+    }
+    check[rand_num as usize] = false;
+    
     config(&mut deps.storage).update(|mut state| {
-            state.count = state.count+Uint128(1);
-            state.check_minted[(metadata.number.unwrap()-1) as usize] = false;  
-            Ok(state)
-        })?;
+        state.check_minted = check;
+        Ok(state)
+    })?;
+
+    let metadata_group = read_metadata(&deps.storage).load()?;
+    let metadata = &metadata_group[rand_num as usize];
 
 
     if crr_time<(state.presale_start + state.presale_period) {
@@ -149,12 +163,12 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             Some(Metadata{
                 token_uri:None,
                 extension:Some(Extension{
-                    image:metadata.image,
+                    image:metadata.clone().image,
                     image_data:None,
                     external_url:None,
-                    description:metadata.description,
-                    name:metadata.name,
-                    attributes:metadata.attributes,
+                    description:metadata.clone().description,
+                    name:metadata.clone().name,
+                    attributes:metadata.clone().attributes,
                     background_color:None,
                     animation_url:None,
                     youtube_url:None,
@@ -164,8 +178,9 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             }),
             None, None, None,
             RESPONSE_BLOCK_SIZE, 
-            metadata.code_hash.unwrap(), 
-            state.nft_address)?
+            state.nft_contract_hash, 
+            state.nft_address
+        )?
         ];
         
         for reward_member in state.reward_wallet{
@@ -192,7 +207,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             ))
         }
         let user_info = read_user_info(&deps.storage,&sender.as_str());
-        let token_id = metadata.tokenId.unwrap(); 
+        let token_id = metadata.clone().tokenId.unwrap(); 
         if user_info == None{
             store_user_info(& mut deps.storage, &sender.as_str(), vec![token_id.clone()])?;
         }
@@ -209,12 +224,12 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             Some(Metadata{
                 token_uri:None,
                 extension:Some(Extension{
-                    image:metadata.image,
+                    image:metadata.clone().image,
                     image_data:None,
                     external_url:None,
-                    description:metadata.description,
-                    name:metadata.name,
-                    attributes:metadata.attributes,
+                    description:metadata.clone().description,
+                    name:metadata.clone().name,
+                    attributes:metadata.clone().attributes,
                     background_color:None,
                     animation_url:None,
                     youtube_url:None,
@@ -224,7 +239,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             }),
             None, None, None,
             RESPONSE_BLOCK_SIZE, 
-             metadata.code_hash.unwrap(), 
+             state.nft_contract_hash, 
             state.nft_address)?
         ];
         
@@ -501,29 +516,57 @@ pub fn add_white_user<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse::default())
 }
 
+
+pub fn add_metadata<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    new_metadata:Vec<MetadataMsg>
+) -> StdResult<HandleResponse> {
+    let state = config_read(&deps.storage).load()?;
+    if _env.message.sender != state.admin{
+        return Err(StdError::generic_err(
+            "Unauthorized"
+        ))
+    }
+   
+    let mut metadata = read_metadata(&deps.storage).load()?;
+    for new_data in new_metadata{
+        metadata.push(new_data);
+    }
+
+    save_metadata(&mut deps.storage).save(&metadata)?;
+   
+    Ok(HandleResponse::default())
+}
+
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetStateInfo {} => to_binary(&query_count(deps)?),
+        QueryMsg::GetStateInfo {} => to_binary(&query_state_info(deps)?),
         QueryMsg::GetWhiteUsers {} => to_binary(&query_white_users(deps)?),
         QueryMsg::GetUserInfo { address } => to_binary(&query_user_info(deps,address)?),
 
     }
 }
 
-fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<State> {
+fn query_state_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<State> {
     let state = config_read(&deps.storage).load()?;
     Ok(state)
 }
 
-
+fn query_metadata<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Vec<MetadataMsg>> {
+    let metadata = read_metadata(&deps.storage).load()?;
+    Ok(metadata)
+}
 
 fn query_white_users<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Vec<HumanAddr>> {
     let members = read_members(&deps.storage).load()?;
     Ok(members)
 }
+
+
 
 fn query_user_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>,address:HumanAddr) -> StdResult<Vec<String>> {
     let user_info  = read_user_info(&deps.storage,&address.as_str());
@@ -541,7 +584,7 @@ mod tests {
 
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env};
-    use cosmwasm_std::{coins, from_binary, StdError};
+    use cosmwasm_std::{coins};
 
     #[test]
     fn proper_initialization() {
@@ -566,7 +609,7 @@ mod tests {
              ],
              presale_start : env.block.time,
              presale_period:100,
-             denom:"uscrt".to_string(),
+             nft_contract_hash:"uscrt".to_string(),
              token_address:HumanAddr::from("token_address"),
              token_contract_hash :"token_hash".to_string(),
              check_minted : vec![true,true,true,true,true]
@@ -604,27 +647,22 @@ mod tests {
              ],
              presale_start : env.block.time,
              presale_period:100,
-             denom:"uscrt".to_string(),
+             nft_contract_hash:"uscrt".to_string(),
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
                 check_minted : vec![true,true,true,true,true]
             };
         
-        // we can just call .unwrap() to assert this was a success
         let res = init(&mut deps, env, msg).unwrap();
         assert_eq!(0, res.messages.len());
         
-        // let env = mock_env("anyone", &coins(2, "token"));
-        // let msg = HandleMsg::Increment {};
-        // let _res = handle(&mut deps, env, msg).unwrap();
-
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetRewardWallet { wallet: vec![Wallet{
             address:HumanAddr::from("reward1"),
             portion:Decimal::from_ratio(100 as u128,100 as u128)
         }] };
         let _res = handle(&mut deps, env, msg).unwrap();
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
 
         assert_eq!(state.reward_wallet,vec![Wallet{
             address:HumanAddr::from("reward1"),
@@ -632,31 +670,65 @@ mod tests {
         }]);
 
         let env = mock_env("admin", &vec![]);
+        let msg = HandleMsg::AddMetaData {metadata: vec![MetadataMsg{
+            tokenId : Some("token_id".to_string()),
+            name:Some("name".to_string()),
+            description:Some("description".to_string()),
+            attributes:None,
+            image:Some("image".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        }
+        ] };
+      
+
+        let _res = handle(&mut deps, env, msg).unwrap();
+        let metadata = query_metadata(&deps).unwrap();
+        assert_eq!(metadata,vec![MetadataMsg{
+            tokenId : Some("token_id".to_string()),
+            name:Some("name".to_string()),
+            description:Some("description".to_string()),
+            attributes:None,
+            image:Some("image".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        }
+        ]);
+
+        let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetMaximumNft { amount: Uint128(2) };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.maximum_count,Uint128(2));
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetTotalSupply { amount: Uint128(100) };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.total_supply,Uint128(100));
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetMintFlag { flag :false };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.can_mint,false);
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetPrice { public_price: Uint128(5), private_price: Uint128(10) };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.public_price,Uint128(5));
         assert_eq!(state.private_price,Uint128(10));
 
@@ -665,7 +737,7 @@ mod tests {
         let msg = HandleMsg::SetMintTime { presale_start: env.block.time+10, presale_period: 200 };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
     
         assert_eq!(state.presale_period,200);
 
@@ -673,7 +745,7 @@ mod tests {
         let msg = HandleMsg::ChangeAdmin { address: HumanAddr::from("admin1") };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.admin,HumanAddr::from("admin1"));
 
 
@@ -702,7 +774,7 @@ mod tests {
         let msg = InitMsg {
              white_members: vec![HumanAddr::from("white1"),HumanAddr::from("white2")],
              admin : HumanAddr::from("admin"),
-             total_supply : Uint128(3),
+             total_supply : Uint128(5),
              maximum_count :Uint128(1),
              public_price : Uint128(600000),
              private_price:Uint128(400000) ,
@@ -717,7 +789,7 @@ mod tests {
              ],
              presale_start : env.block.time-110,
              presale_period:100,
-             denom:"uscrt".to_string(),
+             nft_contract_hash:"uscrt".to_string(),
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
                 check_minted : vec![true,true,true,true,true]
@@ -731,7 +803,7 @@ mod tests {
         let msg = HandleMsg::SetNftAddress { nft_address: HumanAddr::from("nft") };
         let _res = handle(&mut deps, env, msg).unwrap();
 
-        let state = query_count(&deps).unwrap();
+        let state = query_state_info(&deps).unwrap();
         assert_eq!(state.nft_address,HumanAddr::from("nft"));
 
         let message = to_binary( 
@@ -746,10 +818,42 @@ mod tests {
             }]),
             name:Some("name".to_string()),
             image:Some("image".to_string()),
-            protected_attributes:None,
-            code_hash:Some("CodeHash".to_string()),
-            number:Some(3)
+
         }).unwrap();
+        let env = mock_env("admin", &vec![]);
+        let msg = HandleMsg::AddMetaData {metadata: vec![MetadataMsg{
+            tokenId : Some("token_id".to_string()),
+            name:Some("name".to_string()),
+            description:Some("description".to_string()),
+            attributes:None,
+            image:Some("image".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        },MetadataMsg{
+            tokenId : Some("token_id1".to_string()),
+            name:Some("name1".to_string()),
+            description:Some("description1".to_string()),
+            attributes:None,
+            image:Some("image1".to_string())
+        }
+        ] };
+         let _res = handle(&mut deps, env, msg).unwrap();
         let env = mock_env("token_address", &vec![]);
          let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
 
@@ -760,13 +864,28 @@ mod tests {
         assert_eq!(user_info,empty);
         
         let user_info = query_user_info(&deps, HumanAddr::from("white1")).unwrap();
-        assert_eq!(user_info,vec!["punks1".to_string()]);
+        assert_eq!(user_info,vec!["token_id1".to_string()]);
        
-       let env = mock_env("token_address", &vec![]);
-         let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
-         let _res = handle(&mut deps, env, msg).unwrap();
+        let env = mock_env("token_address", &vec![]);
+        let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
+        let _res = handle(&mut deps, env, msg).unwrap();
+
+        let env = mock_env("token_address", &vec![]);
+        let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
+        let _res = handle(&mut deps, env, msg).unwrap();
        
-        }
+        let env = mock_env("token_address", &vec![]);
+        let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
+        let _res = handle(&mut deps, env, msg).unwrap();
+       
+        let env = mock_env("token_address", &vec![]);
+        let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
+        let _res = handle(&mut deps, env, msg).unwrap();
+       
+        let state = query_state_info(&deps).unwrap();
+        assert_eq!(state.check_minted,vec![false,false,false,false,false])
+        
+    }
 
     
 }
