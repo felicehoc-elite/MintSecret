@@ -28,14 +28,13 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         public_price : msg.public_price,
         private_price :msg.private_price,
         reward_wallet : msg.reward_wallet,
-        presale_start : msg.presale_start,
-        presale_period : msg.presale_period,
-        can_mint : true,
+        public_mint : false,
+        private_mint : false,
         nft_address:HumanAddr::from("nft_address"),
         nft_contract_hash : msg.nft_contract_hash,
         token_address:msg.token_address,
         token_contract_hash:msg.token_contract_hash,
-        check_minted : msg.check_minted
+        check_minted : msg.check_minted,
     };
 
     config(&mut deps.storage).save(&state)?;
@@ -58,8 +57,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::ChangeAdmin { address } => set_admin(deps,env,address),
         HandleMsg::SetRewardWallet { wallet } => set_reward_wallet(deps,env,wallet),
         HandleMsg::SetPrice { public_price, private_price} =>set_price(deps,env,public_price,private_price),
-        HandleMsg::SetMintFlag { flag } => set_flag(deps,env,flag),
-        HandleMsg::SetMintTime { presale_start, presale_period }=> set_mint_time(deps,env,presale_start,presale_period),
+        HandleMsg::SetSaleFlag { private_mint, public_mint }=> set_mint_time(deps,env,private_mint,public_mint),
         HandleMsg::SetWhiteUsers { members } => set_white_members(deps,env,members),
         HandleMsg::AddWhiteUser { member } => add_white_user(deps,env,member),
         HandleMsg::SetNftAddress { nft_address } => set_nft_address(deps,env,nft_address),
@@ -80,7 +78,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
     
     let state = config_read(&deps.storage).load()?;
     let crr_time =  env.block.time;
-    if crr_time < state.presale_start{
+    if state.private_mint == false && state.public_mint ==false{
         return Err(StdError::generic_err(
             "PresaleNotStarted"
         ))
@@ -98,11 +96,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         ))
     }
 
-     if state.can_mint == false{
-        return Err(StdError::generic_err(
-            "Can not mint for some time"
-        ))
-    }
+     
 
     let total = Uint128::u128(&state.total_supply);
     let mut check = state.check_minted;
@@ -121,7 +115,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
     let metadata = &metadata_group[rand_num as usize];
 
 
-    if crr_time<(state.presale_start + state.presale_period) {
+    if state.private_mint {
         let members = read_members(&deps.storage).load()?;
         let mut flag = false;
         for member in members {
@@ -201,7 +195,8 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
              data: None,
          })
     }
-    else{
+   
+    else {
         if amount != state.public_price{
             return Err(StdError::generic_err(
                 "Not exact money"
@@ -430,42 +425,29 @@ pub fn set_price<S: Storage, A: Api, Q: Querier>(
 }
 
 
-pub fn set_flag<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    _env: Env,
-    flag:bool
-) -> StdResult<HandleResponse> {
-    let state = config_read(&deps.storage).load()?;
-    if _env.message.sender != state.admin{
-        return Err(StdError::generic_err(
-            "Unauthorized"
-        ))
-    }
-    config(&mut deps.storage).update(|mut state| {
-        state.can_mint = flag;
-     
-        Ok(state)
-    })?;
-
-   
-    Ok(HandleResponse::default())
-}
 
 pub fn set_mint_time<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
-    presale_start:u64,
-    presale_period:u64
+    private_mint:bool,
+    public_mint:bool
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
+
+    if private_mint==true && public_mint == true{
+        return Err(StdError::generic_err(
+            "You can not set both true"
+        ))
+    }
+
     if _env.message.sender != state.admin{
         return Err(StdError::generic_err(
             "Unauthorized"
         ))
     }
     config(&mut deps.storage).update(|mut state| {
-        state.presale_start = presale_start;
-        state.presale_period = presale_period;
+        state.private_mint = private_mint;
+        state.public_mint = public_mint;
      
         Ok(state)
     })?;
@@ -736,12 +718,7 @@ mod tests {
         let state = query_state_info(&deps).unwrap();
         assert_eq!(state.total_supply,Uint128(100));
 
-        let env = mock_env("admin", &vec![]);
-        let msg = HandleMsg::SetMintFlag { flag :false };
-        let _res = handle(&mut deps, env, msg).unwrap();
-
-        let state = query_state_info(&deps).unwrap();
-        assert_eq!(state.can_mint,false);
+        
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetPrice { public_price: Uint128(5), private_price: Uint128(10) };
@@ -752,13 +729,6 @@ mod tests {
         assert_eq!(state.private_price,Uint128(10));
 
         
-        let env = mock_env("admin", &vec![]);
-        let msg = HandleMsg::SetMintTime { presale_start: env.block.time+10, presale_period: 200 };
-        let _res = handle(&mut deps, env, msg).unwrap();
-
-        let state = query_state_info(&deps).unwrap();
-    
-        assert_eq!(state.presale_period,200);
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::ChangeAdmin { address: HumanAddr::from("admin1") };
@@ -873,6 +843,11 @@ mod tests {
         }
         ] };
          let _res = handle(&mut deps, env, msg).unwrap();
+
+          let env = mock_env("admin", &vec![]);
+        let msg = HandleMsg::SetSaleFlag { private_mint: false, public_mint: true };
+        let _res = handle(&mut deps, env, msg).unwrap();
+
         let env = mock_env("token_address", &vec![]);
          let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
 
@@ -883,8 +858,8 @@ mod tests {
         assert_eq!(user_info,empty);
         
         let user_info = query_user_info(&deps, HumanAddr::from("white1")).unwrap();
-        assert_eq!(user_info,vec!["token_id1".to_string()]);
-       
+        assert_eq!(user_info,vec!["token_id1".to_string()]);       
+
         let env = mock_env("token_address", &vec![]);
         let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
         let _res = handle(&mut deps, env, msg).unwrap();
@@ -902,8 +877,8 @@ mod tests {
         let _res = handle(&mut deps, env, msg).unwrap();
        
         let state = query_state_info(&deps).unwrap();
-        assert_eq!(state.check_minted,vec![false,false,false,false,false])
-        
+        assert_eq!(state.check_minted,vec![false,false,false,false,false]);
+
     }
 
     
