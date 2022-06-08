@@ -60,7 +60,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::SetSaleFlag { private_mint, public_mint }=> set_mint_time(deps,env,private_mint,public_mint),
         HandleMsg::SetWhiteUsers { members } => set_white_members(deps,env,members),
         HandleMsg::AddWhiteUser { member } => add_white_user(deps,env,member),
-        HandleMsg::SetNftAddress { nft_address } => set_nft_address(deps,env,nft_address),
+        HandleMsg::SetNftAddress { nft_address,nft_contract_hash } => set_nft_address(deps,env,nft_address,nft_contract_hash),
         HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash),
         HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata),
         HandleMsg::SetMetaData { metadata }=> set_metadata(deps,env,metadata)
@@ -330,7 +330,8 @@ pub fn set_admin<S: Storage, A: Api, Q: Querier>(
 pub fn set_nft_address<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
-    address:HumanAddr
+    address:HumanAddr,
+    nft_contract_hash:String
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
     if _env.message.sender != state.admin{
@@ -340,7 +341,7 @@ pub fn set_nft_address<S: Storage, A: Api, Q: Querier>(
     }
     config(&mut deps.storage).update(|mut state| {
         state.nft_address = address;
-     
+        state.nft_contract_hash = nft_contract_hash;
         Ok(state)
     })?;
 
@@ -789,7 +790,7 @@ mod tests {
         assert_eq!(0, res.messages.len());
         
         let env = mock_env("admin", &vec![]);
-        let msg = HandleMsg::SetNftAddress { nft_address: HumanAddr::from("nft") };
+        let msg = HandleMsg::SetNftAddress { nft_address: HumanAddr::from("nft"),nft_contract_hash:"123".to_string() };
         let _res = handle(&mut deps, env, msg).unwrap();
 
         let state = query_state_info(&deps).unwrap();

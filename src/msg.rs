@@ -34,7 +34,7 @@ pub enum HandleMsg {
     SetSaleFlag{private_mint:bool,public_mint:bool},
     SetWhiteUsers{members:Vec<HumanAddr>},
     AddWhiteUser{member:HumanAddr},
-    SetNftAddress{nft_address:HumanAddr},
+    SetNftAddress{nft_address:HumanAddr,nft_contract_hash:String},
     SetTokenAddres{token_address:HumanAddr,token_contract_hash:String},
     AddMetaData {metadata: Vec<MetadataMsg>},
     SetMetaData {metadata: Vec<MetadataMsg>}
