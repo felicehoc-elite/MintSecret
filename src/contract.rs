@@ -116,6 +116,11 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         Ok(state)
     })?;
 
+    config(&mut deps.storage).update(|mut state|{
+        state.count = state.count+Uint128(1);
+        Ok(state)
+    })?;
+
      let metadata_group = read_metadata(&deps.storage).load()?;
      let metadata = metadata_group[rand_num as usize].clone();
 
@@ -925,7 +930,8 @@ mod tests {
         let _res = handle(&mut deps, env, msg).unwrap();
 
         let state = query_state_info(&deps).unwrap();
-        assert_eq!(state.check_minted,[false,false,false,false,false])
+        assert_eq!(state.check_minted,[false,false,false,false,false]);
+        assert_eq!(state.count,Uint128(5))
     }
 
     
