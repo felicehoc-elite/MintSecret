@@ -4,15 +4,14 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128, HumanAddr,Decimal
 };
 use secret_toolkit::snip721::{Metadata, Extension,Trait};
-
+use rand::{RngCore, SeedableRng};
+use rand_chacha::ChaChaRng;
+use crate::rand::{sha_256, Prng};
 
 use crate::msg::{ HandleMsg, InitMsg, QueryMsg,Wallet, MetadataMsg};
-use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info, save_metadata, read_metadata};
+use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info, save_metadata, read_metadata, save_rand, read_rand};
 use secret_toolkit::{snip20,snip721};
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
-
-use rand::{Rng};
-
 
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -31,7 +30,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         public_mint : false,
         private_mint : false,
         nft_address:HumanAddr::from("nft_address"),
-        nft_contract_hash : msg.nft_contract_hash,
+        nft_contract_hash : "nft_hash".to_string(),
         token_address:msg.token_address,
         token_contract_hash:msg.token_contract_hash,
         check_minted : msg.check_minted,
@@ -63,7 +62,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::SetNftAddress { nft_address,nft_contract_hash } => set_nft_address(deps,env,nft_address,nft_contract_hash),
         HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash),
         HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata),
-        HandleMsg::SetMetaData { metadata }=> set_metadata(deps,env,metadata)
+        HandleMsg::SetMetaData { metadata }=> set_metadata(deps,env,metadata),
+        HandleMsg::SetRandom { }=> set_random(deps,env)
+    
     }
 }
 
@@ -77,7 +78,6 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     
     let state = config_read(&deps.storage).load()?;
-    let crr_time =  env.block.time;
     if state.private_mint == false && state.public_mint ==false{
         return Err(StdError::generic_err(
             "PresaleNotStarted"
@@ -94,15 +94,20 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(
             "Can not mint any more"
         ))
-    }
+    }    
 
-     
-
-    let total = Uint128::u128(&state.total_supply);
+    let prng_seed: Vec<u8> = sha_256(base64::encode("entropy").as_bytes()).to_vec();
+    let random_seed = new_entropy(&env, prng_seed.as_ref(), prng_seed.as_ref());
+    let mut rng = ChaChaRng::from_seed(random_seed);
+    
+    let count = Uint128::u128(&state.total_supply);
+        
+    let mut rand_num = (rng.next_u32() % (count as u32)) as u16 ;
+    
     let mut check = state.check_minted;
-    let mut rand_num = rand::thread_rng().gen_range(0, total);
+   
     while check[rand_num as usize]== false{
-        rand_num = (rand_num+1)%total;
+        rand_num = (rand_num+1)%(count as u16);
     }
     check[rand_num as usize] = false;
     
@@ -111,8 +116,8 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         Ok(state)
     })?;
 
-    let metadata_group = read_metadata(&deps.storage).load()?;
-    let metadata = &metadata_group[rand_num as usize];
+     let metadata_group = read_metadata(&deps.storage).load()?;
+     let metadata = metadata_group[rand_num as usize].clone();
 
 
     if state.private_mint {
@@ -220,7 +225,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             Some(Metadata{
                 token_uri:None,
                 extension:Some(Extension{
-                    image:metadata.clone().image,
+                   image:metadata.clone().image,
                     image_data:None,
                     external_url:None,
                     description:metadata.clone().description,
@@ -541,6 +546,24 @@ pub fn set_metadata<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse::default())
 }
 
+pub fn set_random<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+) -> StdResult<HandleResponse> {
+    let state = config_read(&deps.storage).load()?;
+   
+    let prng_seed: Vec<u8> = sha_256(base64::encode("entropy").as_bytes()).to_vec();
+    let random_seed = new_entropy(&env, prng_seed.as_ref(), prng_seed.as_ref());
+    let mut rng = ChaChaRng::from_seed(random_seed);
+    
+    let count = Uint128::u128(&state.total_supply);
+        
+    let num = (rng.next_u32() % (count as u32)) as u16 ;
+    save_rand(&mut deps.storage).save(&num)?;
+
+    Ok(HandleResponse::default())
+}
+
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
@@ -549,7 +572,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::GetStateInfo {} => to_binary(&query_state_info(deps)?),
         QueryMsg::GetWhiteUsers {} => to_binary(&query_white_users(deps)?),
         QueryMsg::GetUserInfo { address } => to_binary(&query_user_info(deps,address)?),
-
+        QueryMsg::GetMetadata { } => to_binary(&query_metadata(deps)?),
+        QueryMsg::GetRand {  }=> to_binary(&query_random(deps)?)
     }
 }
 
@@ -568,6 +592,10 @@ fn query_white_users<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> 
     Ok(members)
 }
 
+fn query_random<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<u16> {
+    let rand = read_rand(&deps.storage).load()?;
+    Ok(rand)
+}
 
 
 fn query_user_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>,address:HumanAddr) -> StdResult<Vec<String>> {
@@ -579,6 +607,21 @@ fn query_user_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>,addres
     Ok(user_info.unwrap())
     }
 }
+
+pub fn new_entropy(env: &Env, seed: &[u8], entropy: &[u8]) -> [u8; 32] {
+    // 16 here represents the lengths in bytes of the block height and time.
+    let entropy_len = 16 + env.message.sender.len() + entropy.len();
+    let mut rng_entropy = Vec::with_capacity(entropy_len);
+    rng_entropy.extend_from_slice(&env.block.height.to_be_bytes());
+    rng_entropy.extend_from_slice(&env.block.time.to_be_bytes());
+    rng_entropy.extend_from_slice(&env.message.sender.0.as_bytes());
+    rng_entropy.extend_from_slice(entropy);
+
+    let mut rng = Prng::new(seed, &rng_entropy);
+
+    rng.rand_bytes()
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -609,9 +652,6 @@ mod tests {
                  portion:Decimal::from_ratio(3 as u128,100 as u128)
              }
              ],
-             presale_start : env.block.time,
-             presale_period:100,
-             nft_contract_hash:"uscrt".to_string(),
              token_address:HumanAddr::from("token_address"),
              token_contract_hash :"token_hash".to_string(),
              check_minted : vec![true,true,true,true,true]
@@ -620,9 +660,7 @@ mod tests {
         // we can just call .unwrap() to assert this was a success
         let res = init(&mut deps, env.clone(), msg).unwrap();
         assert_eq!(0, res.messages.len());
-        // assert_eq!(from_binary(&Binary::from("W29iamVjdCBPYmplY3Rd"))?,[])
-        // let crr_time = query_get_time(&deps,env.clone()).unwrap();
-        // assert_eq!(env.block.time,crr_time)
+      
        
     }
 
@@ -647,9 +685,6 @@ mod tests {
                  portion:Decimal::from_ratio(3 as u128,100 as u128)
              }
              ],
-             presale_start : env.block.time,
-             presale_period:100,
-             nft_contract_hash:"uscrt".to_string(),
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
                 check_minted : vec![true,true,true,true,true]
@@ -686,7 +721,8 @@ mod tests {
             image:Some("image1".to_string())
         }
         ] };
-      
+
+        
 
         let _res = handle(&mut deps, env, msg).unwrap();
         let metadata = query_metadata(&deps).unwrap();
@@ -777,9 +813,6 @@ mod tests {
                  portion:Decimal::from_ratio(30 as u128,100 as u128)
              }
              ],
-             presale_start : env.block.time-110,
-             presale_period:100,
-             nft_contract_hash:"uscrt".to_string(),
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
                 check_minted : vec![true,true,true,true,true]
@@ -792,6 +825,9 @@ mod tests {
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetNftAddress { nft_address: HumanAddr::from("nft"),nft_contract_hash:"123".to_string() };
         let _res = handle(&mut deps, env, msg).unwrap();
+
+        let state = query_state_info(&deps).unwrap();
+        assert_eq!(state.nft_contract_hash,"123");
 
         let state = query_state_info(&deps).unwrap();
         assert_eq!(state.nft_address,HumanAddr::from("nft"));
@@ -845,7 +881,18 @@ mod tests {
         ] };
          let _res = handle(&mut deps, env, msg).unwrap();
 
-          let env = mock_env("admin", &vec![]);
+        let metadata = query_metadata(&deps).unwrap();
+   
+        let size:u128 = 0;
+        assert_eq!(metadata[size as usize],MetadataMsg{
+          tokenId : Some("token_id".to_string()),
+            name:Some("name".to_string()),
+            description:Some("description".to_string()),
+            attributes:None,
+            image:Some("image".to_string())
+        });
+        
+         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetSaleFlag { private_mint: false, public_mint: true };
         let _res = handle(&mut deps, env, msg).unwrap();
 
@@ -858,8 +905,8 @@ mod tests {
         let empty : Vec<String> = vec![];
         assert_eq!(user_info,empty);
         
-        let user_info = query_user_info(&deps, HumanAddr::from("white1")).unwrap();
-        assert_eq!(user_info,vec!["token_id1".to_string()]);       
+        // let user_info = query_user_info(&deps, HumanAddr::from("white1")).unwrap();
+        // assert_eq!(user_info,vec!["token_id1".to_string()]);       
 
         let env = mock_env("token_address", &vec![]);
         let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
@@ -876,10 +923,9 @@ mod tests {
         let env = mock_env("token_address", &vec![]);
         let msg = HandleMsg::Receive { sender: HumanAddr::from("white1"), from: HumanAddr::from("xxx"), amount: Uint128(600000), msg: message.clone() };
         let _res = handle(&mut deps, env, msg).unwrap();
-       
+
         let state = query_state_info(&deps).unwrap();
-        assert_eq!(state.check_minted,vec![false,false,false,false,false]);
-
+        assert_eq!(state.check_minted,[false,false,false,false,false])
     }
 
     

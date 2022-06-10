@@ -45,6 +45,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 
 [[package]]
+name = "base64"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
+
+[[package]]
 name = "bincode2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -282,7 +288,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5d4b8fed972d924458d9c3c0e6c9fbf6c4c5e30655571e3d2b78be056d316e9"
 dependencies = [
- "base64",
+ "base64 0.11.0",
  "schemars",
  "serde",
  "serde-json-wasm",
@@ -370,6 +376,7 @@ dependencies = [
 name = "secret_mint_contract"
 version = "0.1.0"
 dependencies = [
+ "base64 0.12.3",
  "cosmwasm-schema",
  "rand",
  "rand_chacha",

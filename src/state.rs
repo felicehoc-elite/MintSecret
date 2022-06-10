@@ -7,6 +7,7 @@ use cosmwasm_storage::{singleton, singleton_read, ReadonlySingleton, Singleton,b
 // use cw_storage_plus::Map;
 
 pub static CONFIG_KEY: &[u8] = b"config";
+pub static CONFIG_RANDOM: &[u8] = b"config_random";
 pub static CONFIG_METADATA : &[u8] = b"config_metadata";
 pub static CONFIG_MEMBERS: &[u8] = b"config_members";
 pub const CONFIG_USERS: &[u8] = b"User";
@@ -37,6 +38,14 @@ pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
 
 pub fn config_read<S: Storage>(storage: &S) -> ReadonlySingleton<S, State> {
     singleton_read(storage, CONFIG_KEY)
+}
+
+pub fn save_rand<S: Storage>(storage: &mut S) -> Singleton<S, u16> {
+    singleton(storage, CONFIG_RANDOM)
+}
+
+pub fn read_rand<S: Storage>(storage: &S) -> ReadonlySingleton<S, u16> {
+    singleton_read(storage, CONFIG_RANDOM)
 }
 
 pub fn save_metadata<S: Storage>(storage: &mut S) -> Singleton<S, Vec<MetadataMsg>> {

@@ -13,9 +13,6 @@ pub struct InitMsg {
    pub public_price:Uint128,
    pub private_price:Uint128,
    pub reward_wallet:Vec<Wallet>,
-   pub presale_period:u64,
-   pub presale_start:u64,
-   pub nft_contract_hash : String,
    pub token_address:HumanAddr,
    pub token_contract_hash:String,
    pub check_minted : Vec<bool>
@@ -37,7 +34,8 @@ pub enum HandleMsg {
     SetNftAddress{nft_address:HumanAddr,nft_contract_hash:String},
     SetTokenAddres{token_address:HumanAddr,token_contract_hash:String},
     AddMetaData {metadata: Vec<MetadataMsg>},
-    SetMetaData {metadata: Vec<MetadataMsg>}
+    SetMetaData {metadata: Vec<MetadataMsg>},
+    SetRandom{}
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -47,7 +45,8 @@ pub enum QueryMsg {
     GetStateInfo {},
     GetWhiteUsers{},
     GetUserInfo{address:HumanAddr},
-   
+    GetMetadata{},
+    GetRand{}
 }
 
 
