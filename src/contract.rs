@@ -4,19 +4,20 @@ use cosmwasm_std::{
     StdError, StdResult, Storage, Uint128, HumanAddr,Decimal
 };
 use secret_toolkit::snip721::{Metadata, Extension,Trait};
+use secret_toolkit::snip20::{register_receive_msg};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 use crate::rand::{sha_256, Prng};
 
 use crate::msg::{ HandleMsg, InitMsg, QueryMsg,Wallet, MetadataMsg};
-use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info, save_metadata, read_metadata, save_rand, read_rand};
+use crate::state::{config, config_read, State, store_members, read_members, store_user_info,read_user_info, save_metadata, read_metadata, save_rand, read_rand, read_url_info, store_url_info};
 use secret_toolkit::{snip20,snip721};
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    _env: Env,
+    env: Env,
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let state = State {
@@ -34,14 +35,30 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         token_address:msg.token_address,
         token_contract_hash:msg.token_contract_hash,
         check_minted : msg.check_minted,
+        human_metadata:msg.human_metadata,
+        human_image:msg.human_image,
+        bull_image:msg.bull_image,
+        bull_metadata:msg.bull_metadata,
+        robot_image:msg.robot_image,
+        robot_metadata:msg.robot_metadata
     };
 
     config(&mut deps.storage).save(&state)?;
     store_members(&mut deps.storage).save(&msg.white_members)?;
-    let init_metadata:Vec<MetadataMsg> = vec![];
+    let init_metadata:Vec<String> = vec![];
     save_metadata(&mut deps.storage).save(&init_metadata)?;
 
-    Ok(InitResponse::default())
+     let mut messages = vec![register_receive_msg(
+        env.contract_code_hash,
+        None,
+        RESPONSE_BLOCK_SIZE,
+        state.token_contract_hash.clone(),
+        state.token_address.clone(),
+    )?];
+    Ok(InitResponse {
+        messages,
+        log: vec![],
+    })
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
@@ -61,7 +78,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::AddWhiteUser { member } => add_white_user(deps,env,member),
         HandleMsg::SetNftAddress { nft_address,nft_contract_hash } => set_nft_address(deps,env,nft_address,nft_contract_hash),
         HandleMsg::SetTokenAddres{token_address,token_contract_hash} => set_token_address(deps,env,token_address,token_contract_hash),
-        HandleMsg::AddMetaData { metadata } => add_metadata(deps,env,metadata),
+        HandleMsg::AddMetaData {key, metadata } => add_metadata(deps,env,key,metadata),
         HandleMsg::SetMetaData { metadata }=> set_metadata(deps,env,metadata),
         HandleMsg::SetRandom { }=> set_random(deps,env)
     
@@ -121,9 +138,36 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         Ok(state)
     })?;
 
-     let metadata_group = read_metadata(&deps.storage).load()?;
-     let metadata = metadata_group[rand_num as usize].clone();
+    let key =  rand_num/705;
+    let rand_num = rand_num%705;
 
+    let  token_url : String;
+    let  image_url :String;
+    let token_id:String;
+    //	SteamPunk_Human_70.json
+    if key == 0{
+        let id = [["SteamPunk_Human".to_string(),rand_num.to_string()].join("_"),"json".to_string()].join(".");
+        let image_id =  [["SteamPunk_Human".to_string(),rand_num.to_string()].join("_"),"png".to_string()].join(".");
+        token_url = [state.human_metadata,id].join("/");
+        image_url = [state.human_image,image_id].join("/");
+        token_id = ["SteamPunk_Human".to_string(),rand_num.to_string()].join(".");
+    }
+    else{
+        if key == 1{
+        let id = [["SteamPunk_Bull".to_string(),rand_num.to_string()].join("_"),"json".to_string()].join(".");
+        let image_id =  [["SteamPunk_Bull".to_string(),rand_num.to_string()].join("_"),"png".to_string()].join(".");
+        token_url = [state.bull_metadata,id].join("/");
+        image_url = [state.bull_image,image_id].join("/");
+        token_id = ["SteamPunk_Bull".to_string(),rand_num.to_string()].join(".");
+        }
+       else{
+           let id = [["SteamPunk_Robot".to_string(),rand_num.to_string()].join("_"),"json".to_string()].join(".");
+        let image_id =  [["SteamPunk_Robot".to_string(),rand_num.to_string()].join("_"),"png".to_string()].join(".");
+        token_url = [state.robot_metadata,id].join("/");
+        image_url = [state.robot_image,image_id].join("/");
+        token_id = ["SteamPunk_Robot".to_string(),rand_num.to_string()].join(".");
+        }
+}
 
     if state.private_mint {
         let members = read_members(&deps.storage).load()?;
@@ -145,7 +189,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
         }
         let user_info = read_user_info(&deps.storage,&sender.as_str());
         
-        let token_id = metadata.clone().tokenId.unwrap(); 
+        
         if user_info == None{
             store_user_info(& mut deps.storage, &sender.as_str(), vec![token_id.clone()])?;
         }
@@ -168,12 +212,12 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             Some(Metadata{
                 token_uri:None,
                 extension:Some(Extension{
-                    image:metadata.clone().image,
+                    image:Some(image_url),
                     image_data:None,
-                    external_url:None,
-                    description:metadata.clone().description,
-                    name:metadata.clone().name,
-                    attributes:metadata.clone().attributes,
+                    external_url:Some(token_url),
+                    description:None,
+                    name:None,
+                    attributes:None,
                     background_color:None,
                     animation_url:None,
                     youtube_url:None,
@@ -213,7 +257,7 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             ))
         }
         let user_info = read_user_info(&deps.storage,&sender.as_str());
-        let token_id = metadata.clone().tokenId.unwrap(); 
+       
         if user_info == None{
             store_user_info(& mut deps.storage, &sender.as_str(), vec![token_id.clone()])?;
         }
@@ -230,12 +274,12 @@ pub fn mint_nft<S: Storage, A: Api, Q: Querier>(
             Some(Metadata{
                 token_uri:None,
                 extension:Some(Extension{
-                   image:metadata.clone().image,
+                    image:Some(image_url),
                     image_data:None,
-                    external_url:None,
-                    description:metadata.clone().description,
-                    name:metadata.clone().name,
-                    attributes:metadata.clone().attributes,
+                    external_url:Some(token_url),
+                    description:None,
+                    name:None,
+                    attributes:None,
                     background_color:None,
                     animation_url:None,
                     youtube_url:None,
@@ -514,7 +558,8 @@ pub fn add_white_user<S: Storage, A: Api, Q: Querier>(
 pub fn add_metadata<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
-    new_metadata:Vec<MetadataMsg>
+    key:String,
+    new_metadata:Vec<String>
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
     if _env.message.sender != state.admin{
@@ -523,13 +568,7 @@ pub fn add_metadata<S: Storage, A: Api, Q: Querier>(
         ))
     }
    
-    let mut metadata = read_metadata(&deps.storage).load()?;
-    for new_data in new_metadata{
-        metadata.push(new_data);
-    }
-
-    save_metadata(&mut deps.storage).save(&metadata)?;
-   
+    store_url_info(&mut deps.storage, &key, new_metadata)?;
     Ok(HandleResponse::default())
 }
 
@@ -537,7 +576,7 @@ pub fn add_metadata<S: Storage, A: Api, Q: Querier>(
 pub fn set_metadata<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
-    new_metadata:Vec<MetadataMsg>
+    new_metadata:Vec<String>
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
     if _env.message.sender != state.admin{
@@ -577,7 +616,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::GetStateInfo {} => to_binary(&query_state_info(deps)?),
         QueryMsg::GetWhiteUsers {} => to_binary(&query_white_users(deps)?),
         QueryMsg::GetUserInfo { address } => to_binary(&query_user_info(deps,address)?),
-        QueryMsg::GetMetadata { } => to_binary(&query_metadata(deps)?),
+        QueryMsg::GetMetadata { key} => to_binary(&query_metadata(deps,key)?),
         QueryMsg::GetRand {  }=> to_binary(&query_random(deps)?)
     }
 }
@@ -587,8 +626,8 @@ fn query_state_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> S
     Ok(state)
 }
 
-fn query_metadata<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Vec<MetadataMsg>> {
-    let metadata = read_metadata(&deps.storage).load()?;
+fn query_metadata<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>,key:String) -> StdResult<Vec<String>> {
+    let metadata = read_url_info(&deps.storage,&key).unwrap();
     Ok(metadata)
 }
 
@@ -659,7 +698,13 @@ mod tests {
              ],
              token_address:HumanAddr::from("token_address"),
              token_contract_hash :"token_hash".to_string(),
-             check_minted : vec![true,true,true,true,true]
+             check_minted : vec![true,true,true,true,true],
+             human_image:"human".to_string(),
+             human_metadata:"human".to_string(),
+             robot_image:"robot".to_string(),
+             robot_metadata:"robot".to_string(),
+             bull_image:"bull".to_string(),
+             bull_metadata:"bull".to_string()
             };
         
         // we can just call .unwrap() to assert this was a success
@@ -692,7 +737,14 @@ mod tests {
              ],
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
-                check_minted : vec![true,true,true,true,true]
+                check_minted : vec![true,true,true,true,true],
+           
+             human_image:"human".to_string(),
+             human_metadata:"human".to_string(),
+             robot_image:"robot".to_string(),
+             robot_metadata:"robot".to_string(),
+             bull_image:"bull".to_string(),
+             bull_metadata:"bull".to_string()
             };
         
         let res = init(&mut deps, env, msg).unwrap();
@@ -712,39 +764,19 @@ mod tests {
         }]);
 
         let env = mock_env("admin", &vec![]);
-        let msg = HandleMsg::AddMetaData {metadata: vec![MetadataMsg{
-            tokenId : Some("token_id".to_string()),
-            name:Some("name".to_string()),
-            description:Some("description".to_string()),
-            attributes:None,
-            image:Some("image".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        }
+        let msg = HandleMsg::AddMetaData {key:"0".to_string(),metadata: vec![
+            "metadata1".to_string(),
+            "metadata2".to_string()
         ] };
 
         
 
         let _res = handle(&mut deps, env, msg).unwrap();
-        let metadata = query_metadata(&deps).unwrap();
-        assert_eq!(metadata,vec![MetadataMsg{
-            tokenId : Some("token_id".to_string()),
-            name:Some("name".to_string()),
-            description:Some("description".to_string()),
-            attributes:None,
-            image:Some("image".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        }
-        ]);
+        let metadata = query_metadata(&deps,"0".to_string()).unwrap();
+        assert_eq!(metadata,vec![
+            "metadata1".to_string(),
+            "metadata2".to_string()
+        ] );
 
         let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetMaximumNft { amount: Uint128(2) };
@@ -820,7 +852,13 @@ mod tests {
              ],
               token_address:HumanAddr::from("token_address"),
               token_contract_hash :"token_hash".to_string(),
-                check_minted : vec![true,true,true,true,true]
+                check_minted : vec![true,true,true,true,true],
+             human_image:"human".to_string(),
+             human_metadata:"human".to_string(),
+             robot_image:"robot".to_string(),
+             robot_metadata:"robot".to_string(),
+             bull_image:"bull".to_string(),
+             bull_metadata:"bull".to_string()
             };
         
         // we can just call .unwrap() to assert this was a success
@@ -852,52 +890,21 @@ mod tests {
 
         }).unwrap();
         let env = mock_env("admin", &vec![]);
-        let msg = HandleMsg::AddMetaData {metadata: vec![MetadataMsg{
-            tokenId : Some("token_id".to_string()),
-            name:Some("name".to_string()),
-            description:Some("description".to_string()),
-            attributes:None,
-            image:Some("image".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        },MetadataMsg{
-            tokenId : Some("token_id1".to_string()),
-            name:Some("name1".to_string()),
-            description:Some("description1".to_string()),
-            attributes:None,
-            image:Some("image1".to_string())
-        }
+        let msg = HandleMsg::AddMetaData {key:"0".to_string(),metadata: vec![
+            "metadata1".to_string(),
+            "metadata2".to_string(),
+            "metadata3".to_string(),
+            "metadata4".to_string(),
+            "metadata5".to_string(),
         ] };
          let _res = handle(&mut deps, env, msg).unwrap();
 
-        let metadata = query_metadata(&deps).unwrap();
+        let metadata = query_metadata(&deps,"0".to_string()).unwrap();
    
         let size:u128 = 0;
-        assert_eq!(metadata[size as usize],MetadataMsg{
-          tokenId : Some("token_id".to_string()),
-            name:Some("name".to_string()),
-            description:Some("description".to_string()),
-            attributes:None,
-            image:Some("image".to_string())
-        });
+        assert_eq!(metadata[size as usize],"metadata1".to_string());
         
-         let env = mock_env("admin", &vec![]);
+        let env = mock_env("admin", &vec![]);
         let msg = HandleMsg::SetSaleFlag { private_mint: false, public_mint: true };
         let _res = handle(&mut deps, env, msg).unwrap();
 

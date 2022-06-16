@@ -11,6 +11,7 @@ pub static CONFIG_RANDOM: &[u8] = b"config_random";
 pub static CONFIG_METADATA : &[u8] = b"config_metadata";
 pub static CONFIG_MEMBERS: &[u8] = b"config_members";
 pub const CONFIG_USERS: &[u8] = b"User";
+pub const CONFIG_URL: &[u8] = b"Url";
 
 // pub const USERS: Map<&str, Vec<String>> = Map::new("User");
 
@@ -29,7 +30,13 @@ pub struct State {
     pub nft_contract_hash:String,
     pub token_address:HumanAddr,
     pub token_contract_hash:String,
-    pub check_minted : Vec<bool>
+    pub check_minted : Vec<bool>,
+    pub human_metadata: String,
+    pub human_image:String,
+    pub robot_metadata:String,
+    pub robot_image:String,
+    pub bull_metadata:String,
+    pub bull_image:String
 }
 
 pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
@@ -48,11 +55,11 @@ pub fn read_rand<S: Storage>(storage: &S) -> ReadonlySingleton<S, u16> {
     singleton_read(storage, CONFIG_RANDOM)
 }
 
-pub fn save_metadata<S: Storage>(storage: &mut S) -> Singleton<S, Vec<MetadataMsg>> {
+pub fn save_metadata<S: Storage>(storage: &mut S) -> Singleton<S, Vec<String>> {
     singleton(storage, CONFIG_METADATA)
 }
 
-pub fn read_metadata<S: Storage>(storage: &S) -> ReadonlySingleton<S, Vec<MetadataMsg>> {
+pub fn read_metadata<S: Storage>(storage: &S) -> ReadonlySingleton<S, Vec<String>> {
     singleton_read(storage, CONFIG_METADATA)
 }
 
@@ -71,6 +78,17 @@ pub fn store_user_info<S: Storage>(storage: &mut S, user: &str, user_info: Vec<S
 
 pub fn read_user_info<S: Storage>(storage: &S, user: &str) -> Option<Vec<String>> {
     match bucket_read(CONFIG_USERS, storage).load(user.as_bytes()) {
+        Ok(v) => Some(v),
+        _ => None,
+    }
+}
+
+pub fn store_url_info<S: Storage>(storage: &mut S, user: &str, user_info: Vec<String>) -> StdResult<()> {
+    bucket(CONFIG_URL, storage).save(user.as_bytes(), &user_info)
+}
+
+pub fn read_url_info<S: Storage>(storage: &S, user: &str) -> Option<Vec<String>> {
+    match bucket_read(CONFIG_URL, storage).load(user.as_bytes()) {
         Ok(v) => Some(v),
         _ => None,
     }
